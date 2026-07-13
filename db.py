@@ -18,21 +18,32 @@ import pandas as pd
 DB_PATH = "financas.db"
 
 CATEGORIAS_DESPESA = [
-    "Alimentação",
     "Moradia",
+    "Contas e Serviços",
+    "Alimentação",
     "Transporte",
     "Saúde",
     "Educação",
-    "Lazer",
+    "Lazer e Entretenimento",
+    "Vestuário e Calçados",
+    "Cuidados Pessoais",
+    "Assinaturas e Streaming",
+    "Viagens",
+    "Pets",
+    "Presentes e Doações",
+    "Dívidas e Empréstimos",
+    "Impostos e Taxas",
+    "Imprevistos",
     "Compras",
-    "Contas e Serviços",
     "Outros",
 ]
 
 CATEGORIAS_RECEITA = [
     "Salário",
-    "Freelance",
+    "Freelance / Renda Extra",
     "Investimentos",
+    "Vendas",
+    "Reembolso",
     "Presente",
     "Outros",
 ]
@@ -90,20 +101,47 @@ def get_transacoes_df() -> pd.DataFrame:
     return df
 
 
+def _mes_atras(hoje: date, n: int) -> date:
+    """Retorna o dia 1 do mês `n` meses atrás de `hoje` (sem depender de libs extras)."""
+    mes = hoje.month - n
+    ano = hoje.year
+    while mes <= 0:
+        mes += 12
+        ano -= 1
+    return date(ano, mes, 1)
+
+
 def seed_exemplo_se_vazio():
-    """Adiciona alguns lançamentos de exemplo na primeira execução,
+    """Adiciona alguns lançamentos de exemplo (3 meses) na primeira execução,
     só para o dashboard não aparecer vazio antes do usuário lançar nada."""
     df = get_transacoes_df()
     if not df.empty:
         return
+
     hoje = date.today()
-    exemplos = [
-        (hoje.replace(day=1), "Receita", "Salário", "Salário do mês", 5000.0),
-        (hoje.replace(day=2), "Despesa", "Moradia", "Aluguel", 1500.0),
-        (hoje.replace(day=3), "Despesa", "Alimentação", "Supermercado", 620.0),
-        (hoje.replace(day=5), "Despesa", "Transporte", "Combustível", 250.0),
-        (hoje.replace(day=7), "Despesa", "Lazer", "Cinema", 80.0),
-        (hoje.replace(day=10), "Despesa", "Contas e Serviços", "Internet e celular", 180.0),
+    m0 = _mes_atras(hoje, 0)  # mês atual
+    m1 = _mes_atras(hoje, 1)
+    m2 = _mes_atras(hoje, 2)
+
+    exemplos = []
+    for m in (m2, m1, m0):
+        exemplos += [
+            (m.replace(day=1), "Receita", "Salário", "Salário do mês", 5000.0),
+            (m.replace(day=3), "Despesa", "Moradia", "Aluguel", 1500.0),
+            (m.replace(day=4), "Despesa", "Contas e Serviços", "Água, luz e internet", 320.0),
+            (m.replace(day=6), "Despesa", "Alimentação", "Supermercado", 620.0),
+            (m.replace(day=8), "Despesa", "Transporte", "Combustível e app de transporte", 260.0),
+            (m.replace(day=10), "Despesa", "Saúde", "Plano de saúde", 350.0),
+            (m.replace(day=12), "Despesa", "Lazer e Entretenimento", "Cinema e restaurante", 150.0),
+            (m.replace(day=14), "Despesa", "Assinaturas e Streaming", "Streamings", 60.0),
+            (m.replace(day=18), "Despesa", "Vestuário e Calçados", "Roupas", 120.0),
+        ]
+    # alguns lançamentos só em meses específicos, pra dar variação real
+    exemplos += [
+        (m1.replace(day=20), "Despesa", "Viagens", "Passagem de ônibus", 300.0),
+        (m0.replace(day=15), "Despesa", "Cuidados Pessoais", "Salão de beleza", 90.0),
+        (m0.replace(day=20), "Receita", "Freelance / Renda Extra", "Projeto extra", 800.0),
     ]
+
     for data_, tipo, categoria, descricao, valor in exemplos:
         add_transacao(data_, tipo, categoria, descricao, valor)

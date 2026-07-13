@@ -7,15 +7,20 @@ mês, e despesas por categoria.
 Este projeto foi feito para quem **nunca programou** conseguir ter um app
 próprio, publicado online, editável com ajuda de IA (Claude).
 
-## O que já funciona (MVP v0.1)
+## O que já funciona (v0.2)
 
-- Lançar receitas e despesas manualmente (data, categoria, valor, descrição).
+- Lançar receitas e despesas manualmente (data, categoria, valor, descrição),
+  com uma lista ampla de categorias comuns de despesas e receitas.
 - Ver, filtrar e excluir transações lançadas.
-- Dashboard com:
-  - Cards de resumo (receitas, despesas, saldo do mês, saldo total).
-  - Gráfico de evolução do saldo acumulado.
-  - Gráfico de receita x despesa por mês.
-  - Gráfico de despesas por categoria no mês atual.
+- Dashboard com filtros de **Ano** e **Mês**, e:
+  - Cards de resumo (receitas, despesas e saldo do período selecionado, e saldo
+    acumulado total).
+  - Gráfico de evolução do saldo acumulado (histórico completo).
+  - Gráfico de receita x despesa por mês (dentro do ano selecionado).
+  - Gráfico de receita x despesa por ano (todos os anos lançados).
+  - Ranking de despesas por categoria no período selecionado.
+  - Despesas por categoria ao longo dos meses do ano (gráfico empilhado).
+  - Mapa de calor de despesas por categoria x mês.
 
 Os dados ficam salvos em um arquivo local (`financas.db`, SQLite).
 

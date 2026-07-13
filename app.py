@@ -48,6 +48,8 @@ PALETA_CATEGORIAS = [
     "#eb6834",  # orange
 ]
 
+NOMES_MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
 st.set_page_config(
     page_title="Minhas Finanças",
     page_icon="💰",
@@ -162,35 +164,50 @@ else:
     if df.empty:
         st.info("Nenhuma transação lançada ainda. Vá em 'Lançar transação' para começar.")
     else:
-        hoje = pd.Timestamp(date.today())
-        df_mes_atual = df[(df["data"].dt.month == hoje.month) & (df["data"].dt.year == hoje.year)]
+        df["ano"] = df["data"].dt.year
+        df["mes"] = df["data"].dt.month
 
-        receitas_mes = df_mes_atual.loc[df_mes_atual["tipo"] == "Receita", "valor"].sum()
-        despesas_mes = df_mes_atual.loc[df_mes_atual["tipo"] == "Despesa", "valor"].sum()
-        saldo_mes = receitas_mes - despesas_mes
+        # --- Filtros de período ------------------------------------------
+        anos_disponiveis = sorted(df["ano"].unique(), reverse=True)
+        f1, f2 = st.columns(2)
+        with f1:
+            ano_selecionado = st.selectbox("Ano", anos_disponiveis, index=0)
+        with f2:
+            mes_selecionado = st.selectbox("Mês", ["Ano inteiro"] + NOMES_MESES, index=0)
+
+        df_ano = df[df["ano"] == ano_selecionado]
+        if mes_selecionado == "Ano inteiro":
+            df_periodo = df_ano
+            rotulo_periodo = f"no ano de {ano_selecionado}"
+        else:
+            mes_num = NOMES_MESES.index(mes_selecionado) + 1
+            df_periodo = df_ano[df_ano["mes"] == mes_num]
+            rotulo_periodo = f"em {mes_selecionado}/{ano_selecionado}"
+
+        receitas_periodo = df_periodo.loc[df_periodo["tipo"] == "Receita", "valor"].sum()
+        despesas_periodo = df_periodo.loc[df_periodo["tipo"] == "Despesa", "valor"].sum()
+        saldo_periodo = receitas_periodo - despesas_periodo
 
         receitas_total = df.loc[df["tipo"] == "Receita", "valor"].sum()
         despesas_total = df.loc[df["tipo"] == "Despesa", "valor"].sum()
         saldo_total = receitas_total - despesas_total
 
         # --- KPIs -------------------------------------------------------
+        st.caption(f"Mostrando totais {rotulo_periodo}")
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Receitas do mês", formatar_reais(receitas_mes))
-        k2.metric("Despesas do mês", formatar_reais(despesas_mes))
-        k3.metric(
-            "Saldo do mês",
-            formatar_reais(saldo_mes),
-            delta=None,
-        )
-        k4.metric("Saldo acumulado (total)", formatar_reais(saldo_total))
+        k1.metric("Receitas do período", formatar_reais(receitas_periodo))
+        k2.metric("Despesas do período", formatar_reais(despesas_periodo))
+        k3.metric("Saldo do período", formatar_reais(saldo_periodo))
+        k4.metric("Saldo acumulado (histórico completo)", formatar_reais(saldo_total))
 
         st.divider()
 
         col_a, col_b = st.columns(2)
 
-        # --- Evolução do saldo acumulado ---------------------------------
+        # --- Evolução do saldo acumulado (sempre histórico completo) -----
         with col_a:
             st.subheader("Evolução do saldo acumulado")
+            st.caption("Histórico completo, não muda com os filtros acima.")
             df_ordenado = df.sort_values("data").copy()
             df_ordenado["valor_assinado"] = df_ordenado.apply(
                 lambda r: r["valor"] if r["tipo"] == "Receita" else -r["valor"], axis=1
@@ -213,22 +230,19 @@ else:
             fig_linha = grafico_layout_base(fig_linha)
             st.plotly_chart(fig_linha, use_container_width=True)
 
-        # --- Receita x Despesa por mês -----------------------------------
+        # --- Receita x Despesa por mês (dentro do ano selecionado) -------
         with col_b:
-            st.subheader("Receita x Despesa por mês")
-            df["ano_mes"] = df["data"].dt.to_period("M").astype(str)
-            resumo_mensal = df.groupby(["ano_mes", "tipo"])["valor"].sum().reset_index()
-            meses = sorted(resumo_mensal["ano_mes"].unique())[-6:]  # últimos 6 meses
-            resumo_mensal = resumo_mensal[resumo_mensal["ano_mes"].isin(meses)]
-
-            receitas_serie = resumo_mensal[resumo_mensal["tipo"] == "Receita"].set_index("ano_mes")["valor"]
-            despesas_serie = resumo_mensal[resumo_mensal["tipo"] == "Despesa"].set_index("ano_mes")["valor"]
+            st.subheader(f"Receita x Despesa por mês — {ano_selecionado}")
+            resumo_mensal = df_ano.groupby(["mes", "tipo"])["valor"].sum().reset_index()
+            receitas_serie = resumo_mensal[resumo_mensal["tipo"] == "Receita"].set_index("mes")["valor"]
+            despesas_serie = resumo_mensal[resumo_mensal["tipo"] == "Despesa"].set_index("mes")["valor"]
+            rotulos_meses = NOMES_MESES
 
             fig_barras = go.Figure()
             fig_barras.add_trace(
                 go.Bar(
-                    x=meses,
-                    y=[receitas_serie.get(m, 0) for m in meses],
+                    x=rotulos_meses,
+                    y=[receitas_serie.get(m, 0) for m in range(1, 13)],
                     name="Receita",
                     marker_color=COR_RECEITA,
                     hovertemplate="%{x}<br>Receita: R$ %{y:,.2f}<extra></extra>",
@@ -236,8 +250,8 @@ else:
             )
             fig_barras.add_trace(
                 go.Bar(
-                    x=meses,
-                    y=[despesas_serie.get(m, 0) for m in meses],
+                    x=rotulos_meses,
+                    y=[despesas_serie.get(m, 0) for m in range(1, 13)],
                     name="Despesa",
                     marker_color=COR_DESPESA,
                     hovertemplate="%{x}<br>Despesa: R$ %{y:,.2f}<extra></extra>",
@@ -248,31 +262,124 @@ else:
             fig_barras.update_xaxes(type="category")
             st.plotly_chart(fig_barras, use_container_width=True)
 
-        # --- Despesas por categoria (mês atual) --------------------------
-        st.subheader("Despesas por categoria (mês atual)")
+        # --- Receita x Despesa por ano (todos os anos) -------------------
+        st.subheader("Receita x Despesa por ano")
+        resumo_anual = df.groupby(["ano", "tipo"])["valor"].sum().reset_index()
+        anos_ordenados = sorted(df["ano"].unique())
+        receitas_ano_serie = resumo_anual[resumo_anual["tipo"] == "Receita"].set_index("ano")["valor"]
+        despesas_ano_serie = resumo_anual[resumo_anual["tipo"] == "Despesa"].set_index("ano")["valor"]
+
+        fig_anual = go.Figure()
+        fig_anual.add_trace(
+            go.Bar(
+                x=[str(a) for a in anos_ordenados],
+                y=[receitas_ano_serie.get(a, 0) for a in anos_ordenados],
+                name="Receita",
+                marker_color=COR_RECEITA,
+                hovertemplate="%{x}<br>Receita: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+        fig_anual.add_trace(
+            go.Bar(
+                x=[str(a) for a in anos_ordenados],
+                y=[despesas_ano_serie.get(a, 0) for a in anos_ordenados],
+                name="Despesa",
+                marker_color=COR_DESPESA,
+                hovertemplate="%{x}<br>Despesa: R$ %{y:,.2f}<extra></extra>",
+            )
+        )
+        fig_anual.update_layout(barmode="group")
+        fig_anual = grafico_layout_base(fig_anual, altura=320)
+        fig_anual.update_xaxes(type="category")
+        st.plotly_chart(fig_anual, use_container_width=True)
+
+        st.divider()
+
+        # --- Despesas por categoria (respeita o filtro de período) -------
+        st.subheader(f"Despesas por categoria ({rotulo_periodo})")
         despesas_categoria = (
-            df_mes_atual[df_mes_atual["tipo"] == "Despesa"]
+            df_periodo[df_periodo["tipo"] == "Despesa"]
             .groupby("categoria")["valor"]
             .sum()
             .sort_values(ascending=True)
         )
 
         if despesas_categoria.empty:
-            st.info("Nenhuma despesa lançada neste mês ainda.")
+            st.info("Nenhuma despesa lançada neste período.")
         else:
-            cores = [PALETA_CATEGORIAS[i % len(PALETA_CATEGORIAS)] for i in range(len(despesas_categoria))]
             fig_cat = go.Figure(
                 go.Bar(
                     x=despesas_categoria.values,
                     y=despesas_categoria.index,
                     orientation="h",
-                    marker_color=cores,
+                    marker_color=COR_SALDO,
                     text=[formatar_reais(v) for v in despesas_categoria.values],
                     textposition="outside",
                     hovertemplate="%{y}<br>R$ %{x:,.2f}<extra></extra>",
                 )
             )
-            fig_cat = grafico_layout_base(fig_cat, altura=max(280, 40 * len(despesas_categoria)))
+            fig_cat = grafico_layout_base(fig_cat, altura=max(280, 36 * len(despesas_categoria)))
             fig_cat.update_layout(showlegend=False, margin=dict(l=10, r=90, t=40, b=10))
             fig_cat.update_xaxes(range=[0, despesas_categoria.max() * 1.25])
             st.plotly_chart(fig_cat, use_container_width=True)
+
+        # --- Despesas por categoria ao longo dos meses do ano -------------
+        despesas_ano = df_ano[df_ano["tipo"] == "Despesa"].copy()
+        st.subheader(f"Despesas por categoria ao longo dos meses — {ano_selecionado}")
+        if despesas_ano.empty:
+            st.info("Nenhuma despesa lançada neste ano.")
+        else:
+            total_por_categoria = despesas_ano.groupby("categoria")["valor"].sum().sort_values(ascending=False)
+            top_categorias = list(total_por_categoria.index[:7])
+            despesas_ano["categoria_agrupada"] = despesas_ano["categoria"].where(
+                despesas_ano["categoria"].isin(top_categorias), "Outros"
+            )
+            tem_outros = (despesas_ano["categoria_agrupada"] == "Outros").any()
+            ordem_categorias = top_categorias + (["Outros"] if tem_outros else [])
+
+            pivo = despesas_ano.groupby(["mes", "categoria_agrupada"])["valor"].sum().reset_index()
+
+            fig_stack = go.Figure()
+            for i, cat in enumerate(ordem_categorias):
+                serie = pivo[pivo["categoria_agrupada"] == cat].set_index("mes")["valor"]
+                fig_stack.add_trace(
+                    go.Bar(
+                        x=NOMES_MESES,
+                        y=[serie.get(m, 0) for m in range(1, 13)],
+                        name=cat,
+                        marker_color=PALETA_CATEGORIAS[i % len(PALETA_CATEGORIAS)],
+                        hovertemplate=f"%{{x}}<br>{cat}: R$ " + "%{y:,.2f}<extra></extra>",
+                    )
+                )
+            fig_stack.update_layout(barmode="stack")
+            fig_stack = grafico_layout_base(fig_stack, altura=420)
+            fig_stack.update_xaxes(type="category")
+            st.plotly_chart(fig_stack, use_container_width=True)
+            if tem_outros:
+                n_outros = len(total_por_categoria) - len(top_categorias)
+                st.caption(
+                    f"As {n_outros} categorias com menor gasto no ano foram agrupadas em 'Outros' "
+                    "para manter o gráfico legível."
+                )
+
+            # --- Mapa de calor: categoria x mês ---------------------------
+            st.subheader(f"Mapa de calor de despesas: categoria x mês — {ano_selecionado}")
+            pivo_heat = despesas_ano.groupby(["categoria", "mes"])["valor"].sum().unstack(fill_value=0)
+            pivo_heat = pivo_heat.reindex(columns=range(1, 13), fill_value=0)
+            ordem_heat = pivo_heat.sum(axis=1).sort_values(ascending=False).index
+            pivo_heat = pivo_heat.loc[ordem_heat]
+
+            fig_heat = go.Figure(
+                go.Heatmap(
+                    z=pivo_heat.values,
+                    x=NOMES_MESES,
+                    y=list(pivo_heat.index),
+                    colorscale=[[0, COR_SURFACE], [1, COR_SALDO]],
+                    hovertemplate="%{y} — %{x}<br>R$ %{z:,.2f}<extra></extra>",
+                    colorbar=dict(title="R$", tickfont=dict(color=COR_MUTED)),
+                )
+            )
+            fig_heat = grafico_layout_base(fig_heat, altura=max(320, 32 * len(pivo_heat)))
+            fig_heat.update_yaxes(showgrid=False, autorange="reversed")
+            fig_heat.update_xaxes(type="category")
+            st.plotly_chart(fig_heat, use_container_width=True)
