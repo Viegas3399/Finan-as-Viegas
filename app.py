@@ -56,8 +56,19 @@ st.set_page_config(
     layout="wide",
 )
 
-init_db()
-seed_exemplo_se_vazio()
+try:
+    init_db()
+    seed_exemplo_se_vazio()
+except Exception as erro:
+    st.error(
+        "Não consegui conectar ao banco de dados na nuvem. Isso normalmente "
+        "significa que o secret **SUPABASE_DB_URL** ainda não foi configurado "
+        "(ou está incorreto) — veja o README.md, seção 'Configurando o banco "
+        "de dados na nuvem', para o passo a passo."
+    )
+    with st.expander("Detalhes técnicos do erro"):
+        st.code(str(erro))
+    st.stop()
 
 
 def formatar_reais(valor: float) -> str:
@@ -87,10 +98,7 @@ st.sidebar.title("💰 Minhas Finanças")
 pagina = st.sidebar.radio("Navegar", ["Dashboard", "Lançar transação", "Todas as transações"])
 
 st.sidebar.divider()
-st.sidebar.caption(
-    "MVP v0.1 — dados salvos localmente em `financas.db`. "
-    "Ainda não conectado a um banco na nuvem."
-)
+st.sidebar.caption("v0.3 — dados salvos com segurança em um banco na nuvem (Supabase/Postgres).")
 
 df = get_transacoes_df()
 

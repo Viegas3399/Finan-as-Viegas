@@ -1,21 +1,18 @@
 """
 Camada de acesso a dados do app de finanças pessoais.
 
-Usa SQLite (um arquivo local, `financas.db`) para guardar as transações.
-Isso é ótimo para testar o app agora; quando formos publicar online de
-verdade, vamos trocar isso por um banco de dados na nuvem (ex: Supabase)
-para os dados não se perderem a cada atualização do app. Essa troca fica
-para uma etapa futura — o restante do código (formulários, dashboard)
-não muda.
+Usa um banco de dados Postgres na nuvem (Supabase) para guardar as
+transações, para os dados não se perderem quando o app reiniciar. A conexão
+é configurada através de um "secret" chamado SUPABASE_DB_URL — veja o
+README.md, seção "Configurando o banco de dados na nuvem", para o passo a
+passo de como obter e configurar essa connection string.
 """
 
-import sqlite3
-from contextlib import contextmanager
 from datetime import date
 
 import pandas as pd
-
-DB_PATH = "financas.db"
+import streamlit as st
+from sqlalchemy import create_engine, text
 
 CATEGORIAS_DESPESA = [
     "Moradia",
@@ -49,55 +46,70 @@ CATEGORIAS_RECEITA = [
 ]
 
 
-@contextmanager
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        yield conn
-    finally:
-        conn.close()
+@st.cache_resource(show_spinner=False)
+def get_engine():
+    """Cria (uma única vez por sessão do app) a conexão com o Postgres na nuvem."""
+    db_url = st.secrets.get("SUPABASE_DB_URL")
+    if not db_url:
+        raise RuntimeError(
+            "O banco de dados ainda não está configurado. Defina o secret "
+            "'SUPABASE_DB_URL' com a connection string do Supabase — veja o "
+            "README.md, seção 'Configurando o banco de dados na nuvem'."
+        )
+    # SQLAlchemy precisa do driver explícito no início da connection string.
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return create_engine(db_url, pool_pre_ping=True)
 
 
 def init_db():
-    with get_conn() as conn:
+    engine = get_engine()
+    with engine.begin() as conn:
         conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS transacoes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data TEXT NOT NULL,
-                tipo TEXT NOT NULL CHECK (tipo IN ('Receita', 'Despesa')),
-                categoria TEXT NOT NULL,
-                descricao TEXT,
-                valor REAL NOT NULL CHECK (valor > 0)
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS transacoes (
+                    id SERIAL PRIMARY KEY,
+                    data DATE NOT NULL,
+                    tipo TEXT NOT NULL CHECK (tipo IN ('Receita', 'Despesa')),
+                    categoria TEXT NOT NULL,
+                    descricao TEXT,
+                    valor NUMERIC(12, 2) NOT NULL CHECK (valor > 0)
+                )
+                """
             )
-            """
         )
-        conn.commit()
 
 
 def add_transacao(data_: date, tipo: str, categoria: str, descricao: str, valor: float):
-    with get_conn() as conn:
+    engine = get_engine()
+    with engine.begin() as conn:
         conn.execute(
-            "INSERT INTO transacoes (data, tipo, categoria, descricao, valor) VALUES (?, ?, ?, ?, ?)",
-            (data_.isoformat(), tipo, categoria, descricao, valor),
+            text(
+                "INSERT INTO transacoes (data, tipo, categoria, descricao, valor) "
+                "VALUES (:data, :tipo, :categoria, :descricao, :valor)"
+            ),
+            {"data": data_, "tipo": tipo, "categoria": categoria, "descricao": descricao, "valor": valor},
         )
-        conn.commit()
 
 
 def delete_transacao(transacao_id: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM transacoes WHERE id = ?", (transacao_id,))
-        conn.commit()
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM transacoes WHERE id = :id"), {"id": transacao_id})
 
 
 def get_transacoes_df() -> pd.DataFrame:
-    with get_conn() as conn:
-        df = pd.read_sql_query(
-            "SELECT id, data, tipo, categoria, descricao, valor FROM transacoes ORDER BY data DESC, id DESC",
-            conn,
-        )
+    engine = get_engine()
+    df = pd.read_sql_query(
+        "SELECT id, data, tipo, categoria, descricao, valor FROM transacoes ORDER BY data DESC, id DESC",
+        engine,
+    )
     if not df.empty:
         df["data"] = pd.to_datetime(df["data"])
+        df["valor"] = df["valor"].astype(float)
     return df
 
 
